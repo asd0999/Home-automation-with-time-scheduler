@@ -1,0 +1,114 @@
+#include <NTPClient.h> //https://github.com/arduino-libraries/NTPClient
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <ESP8266HTTPClient.h>
+#include <stdbool.h>
+
+const char *SERVER_WIFI_SSID = " "; //your ssid
+const char *SERVER_WIFI_PASS = " "; /your password
+const int LED_PIN = 14;
+
+WiFiUDP ntpUDP;
+
+// update interval = 1 hour
+// time offset = 5.5 hours
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 3600000);
+
+void setupWiFi()
+
+{
+   Serial.print("Connecting to WiFi ");
+   WiFi.begin(SERVER_WIFI_SSID,SERVER_WIFI_PASS);
+   while(WiFi.status() != WL_CONNECTED)
+   {
+     delay(500);
+     Serial.print(".");
+   }
+
+   Serial.println("Connected");
+   
+}
+
+void setup() {
+  Serial.begin(9600);
+  setupWiFi();
+  pinMode(LED_PIN, OUTPUT);
+  timeClient.begin();
+  timeClient.update();
+}
+
+void loop() {
+  
+  String time = timeClient.getFormattedTime();
+  Serial.println (time);
+  time.remove(2,1);
+  time.remove(4);  
+  
+  // put your main code here, to run repeatedly:
+  HTTPClient http;
+
+  //const char * headerkeys[] = {"Date"} ;
+  //http.collectHeaders(headerkeys,1);
+
+  //Let is try a GET request first 
+  http.begin("http://...");
+  // this is the link for wherever your are hosting the app which will control your device
+  // i used the heroku platform for intial prototyping
+
+  int httpCode = http.GET();
+  
+  //String date = http.header("Date");
+  //Serial.print(date);
+  
+  if(httpCode == HTTP_CODE_OK)
+  {
+      //Serial.print("HTTP response code ");
+      //Serial.println(httpCode);
+      String response = http.getString(); // 2:1255:1300
+      String cmode = response.substring(0,1);
+      String ontime = response.substring(2,6);
+      String offtime = response.substring(7,11);
+      //Serial.print(response);  
+      if (cmode == "0") 
+      {
+        digitalWrite(LED_PIN, HIGH);  //relay off
+        Serial.println ("Manual mode: motor is off");
+      }
+      else if (cmode == "1")
+      {
+        digitalWrite (LED_PIN, LOW);  //relay on
+        Serial.println ("Manual mode: motor is on");
+      }
+      else if (cmode =="2")
+      {
+        //Serial.println ("AUTO mode: ");
+        if (timeBetween(time, ontime, offtime))
+        {
+          digitalWrite (LED_PIN, LOW);  //relay on
+          Serial.println ("AUTO mode: motor is on");
+        }
+        else 
+        {
+          digitalWrite (LED_PIN, HIGH);  //relay off
+          Serial.println ("AUTO mode: motor is off");
+        }
+      }
+  }
+  else
+  {
+    Serial.println("Error in HTTP request");
+    Serial.println(httpCode);
+  }
+
+  http.end();
+
+  Serial.println();
+
+  delay(1000);
+
+}
+
+
+bool timeBetween(String curtime, String starttime, String endtime) {
+  return (((starttime < endtime) and (starttime <= curtime) and  (curtime < endtime)) or ((starttime >= endtime) and ((endtime > curtime) or (curtime >= starttime))));
+}
